@@ -1,0 +1,8 @@
+{:paths ["src"]
+ :deps {org.babashka/cli {:mvn/version "0.8.61"}}
+ :tasks
+ {:override-builtin true
+  run {:doc "Scan code for security vulnerabilities"
+       :task (apply (requiring-resolve 'secure_code_analyzer.core/-main) *command-line-args*)}
+  scan {:doc "Scan current directory"
+        :task (apply (requiring-resolve 'secure_code_analyzer.core/-main) ["--dir" "."])}}}
