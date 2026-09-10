@@ -1,6 +1,7 @@
 (ns secure_code_analyzer.core
   (:require [babashka.cli :as cli]
             [babashka.fs :as fs]
+            [clojure.pprint :as pprint]
             [clojure.spec.alpha :as s]
             [clojure.string :as str]
             [cheshire.core :as json]
@@ -384,7 +385,7 @@
         (specs/output-reads-back? "json" results ret)))
 
 (defn format-edn [results]
-  (with-out-str (clojure.pprint/pprint results)))
+  (with-out-str (pprint/pprint results)))
 
 (s/fdef format-edn
   :args (s/cat :results ::specs/scan-results)
