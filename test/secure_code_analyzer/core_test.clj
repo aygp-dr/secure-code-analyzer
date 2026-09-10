@@ -108,6 +108,14 @@
     (let [findings (sca/scan-file "test/fixtures/clean.py")]
       (is (empty? findings) "clean.py should have zero findings"))))
 
+;; ---- Directory walk ----
+
+(deftest test-top-level-files-are-scanned
+  (testing "Files directly inside the scanned directory are scanned, not only subdirectories"
+    (let [results (sca/scan-directory "test/fixtures" "info")]
+      (is (= 5 (:files-scanned results)))
+      (is (some #(= "test/fixtures/vulnerable.py" (:file %)) (:findings results))))))
+
 ;; ---- Severity filter ----
 
 (deftest test-severity-filter

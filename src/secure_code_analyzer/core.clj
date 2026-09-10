@@ -271,7 +271,9 @@
 (defn find-source-files [dir]
   (let [exts ["py" "pyw" "js" "jsx" "ts" "tsx" "java" "go"]]
     (->> exts
-         (mapcat #(fs/glob dir (str "**/*." %)))
+         ;; "**.ext", not "**/*.ext": the latter needs a separator, so it
+         ;; never matches files directly inside dir
+         (mapcat #(fs/glob dir (str "**." %)))
          (map str)
          (remove #(str/includes? % "/node_modules/"))
          (remove #(str/includes? % "/.git/"))
