@@ -59,11 +59,11 @@
       :message "SQL query uses f-string in execute/query - use parameterized queries"}
      ;; Python: string concat with SQL keywords
      {:langs #{"python"}
-      :regex #"(?i)[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*[\"']\s*\+"
+      :regex #"(?i)(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*')\s*\+"
       :message "SQL query built with string concatenation - use parameterized queries"}
      ;; Python: %-formatting with SQL
      {:langs #{"python"}
-      :regex #"(?i)[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*%s[^\"']*[\"']\s*%"
+      :regex #"(?i)(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*%s[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*%s[^']*')\s*%"
       :message "SQL query uses %-formatting - use parameterized queries"}
      ;; JavaScript/TypeScript: template literal
      {:langs #{"javascript" "typescript"}
@@ -71,11 +71,11 @@
       :message "SQL query uses template literal - use parameterized queries"}
      ;; JavaScript/TypeScript: string concat
      {:langs #{"javascript" "typescript"}
-      :regex #"(?i)[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*[\"']\s*\+"
+      :regex #"(?i)(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*')\s*\+"
       :message "SQL query built with string concatenation - use parameterized queries"}
      ;; Java: string concat in executeQuery/executeUpdate
      {:langs #{"java"}
-      :regex #"(?i)(?:executeQuery|executeUpdate|execute)\s*\(\s*[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*[\"']\s*\+"
+      :regex #"(?i)(?:executeQuery|executeUpdate|execute)\s*\(\s*(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*')\s*\+"
       :message "SQL query with string concatenation - use PreparedStatement with parameters"}
      ;; Go: fmt.Sprintf in Query/Exec
      {:langs #{"go"}
@@ -83,7 +83,7 @@
       :message "SQL query uses fmt.Sprintf - use parameterized queries"}
      ;; Go: string concat
      {:langs #{"go"}
-      :regex #"(?i)(?:Query|Exec|QueryRow)\s*\(\s*[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*[\"']\s*\+"
+      :regex #"(?i)(?:Query|Exec|QueryRow)\s*\(\s*(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*')\s*\+"
       :message "SQL query with string concatenation - use parameterized queries"}]}
 
    ;; A03:2021 — XSS (CWE-79)
