@@ -322,9 +322,9 @@
         (when (pos? total-findings)
           [(format "By severity: %s"
                    (str/join ", "
-                     (for [[sev cnt] (sort-by (fn [[s _]] (- (get severity-levels s 0)))
-                                              findings-by-severity)]
-                       (format "%s=%d" sev cnt))))
+                             (for [[sev cnt] (sort-by (fn [[s _]] (- (get severity-levels s 0)))
+                                                      findings-by-severity)]
+                               (format "%s=%d" sev cnt))))
            ""])
         finding-lines
         (for [{:keys [severity rule-id file line message code cwe]} findings]
