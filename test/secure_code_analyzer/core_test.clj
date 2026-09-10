@@ -1,8 +1,13 @@
 (ns secure_code_analyzer.core_test
-  (:require [clojure.test :refer [deftest testing is run-tests]]
+  (:require [clojure.spec.test.alpha :as stest]
+            [clojure.test :refer [deftest testing is run-tests use-fixtures]]
             [clojure.string :as str]
             [secure_code_analyzer.core :as sca]
             [cheshire.core :as json]))
+
+;; Exercise every s/fdef :args spec while the unit tests run.
+(use-fixtures :once
+  (fn [f] (stest/instrument) (try (f) (finally (stest/unstrument)))))
 
 ;; ---- Unit tests ----
 
