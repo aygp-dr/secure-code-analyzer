@@ -22,18 +22,18 @@
                  #(gen/elements ["A01:2021" "A02:2021" "A03:2021" "A07:2021"])))
 
 ;; A relative or absolute file path, as a string or java.nio.file.Path.
-(def ^:private gen-path-string
+(defn- gen-path-string []
   (gen/fmap (fn [[dirs base ext]]
               (str/join "/" (conj dirs (cond-> base ext (str "." ext)))))
             (gen/tuple (gen/vector (gen/elements ["src" "app" "a b" "node_modules"]) 0 3)
                        (gen/elements ["main" "App" "views" "db" "x"])
                        (gen/elements [nil "py" "pyw" "js" "jsx" "ts" "tsx" "java" "go" "css" "md" "PY"]))))
 
-(s/def ::path-string (s/with-gen (s/and string? seq) (constantly gen-path-string)))
+(s/def ::path-string (s/with-gen (s/and string? seq) gen-path-string))
 (s/def ::path-like
   (s/with-gen (s/or :string ::path-string
                     :path #(instance? java.nio.file.Path %))
-    (constantly gen-path-string)))
+    gen-path-string))
 
 ;; --- Rule database (secure_code_analyzer.core/rules) ---
 
