@@ -1,8 +1,11 @@
 (ns secure_code_analyzer.core
   (:require [babashka.cli :as cli]
             [babashka.fs :as fs]
+            [clojure.pprint :as pprint]
+            [clojure.spec.alpha :as s]
             [clojure.string :as str]
-            [cheshire.core :as json]))
+            [cheshire.core :as json]
+            [secure_code_analyzer.specs :as specs]))
 
 ;;; ---- Language detection ----
 
@@ -19,6 +22,10 @@
 (defn detect-language [filepath]
   (get extension->lang (fs/extension filepath)))
 
+(s/fdef detect-language
+  :args (s/cat :filepath ::specs/path-like)
+  :ret (s/nilable ::specs/lang))
+
 ;;; ---- Severity ----
 
 (def severity-levels
@@ -27,6 +34,13 @@
 (defn severity>= [sev min-sev]
   (>= (get severity-levels sev 0)
       (get severity-levels min-sev 0)))
+
+(s/fdef severity>=
+  :args (s/cat :sev ::specs/severity-name :min-sev ::specs/severity-name)
+  :ret boolean?
+  :fn (fn [{{:keys [min-sev]} :args ret :ret}]
+        ;; an info (or unknown) floor lets every finding through
+        (or (pos? (get severity-levels min-sev 0)) ret)))
 
 ;;; ---- OWASP Vulnerability Rules ----
 
@@ -45,11 +59,11 @@
       :message "SQL query uses f-string in execute/query - use parameterized queries"}
      ;; Python: string concat with SQL keywords
      {:langs #{"python"}
-      :regex #"(?i)[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*[\"']\s*\+"
+      :regex #"(?i)(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*')\s*\+"
       :message "SQL query built with string concatenation - use parameterized queries"}
      ;; Python: %-formatting with SQL
      {:langs #{"python"}
-      :regex #"(?i)[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*%s[^\"']*[\"']\s*%"
+      :regex #"(?i)(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*%s[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*%s[^']*')\s*%"
       :message "SQL query uses %-formatting - use parameterized queries"}
      ;; JavaScript/TypeScript: template literal
      {:langs #{"javascript" "typescript"}
@@ -57,11 +71,11 @@
       :message "SQL query uses template literal - use parameterized queries"}
      ;; JavaScript/TypeScript: string concat
      {:langs #{"javascript" "typescript"}
-      :regex #"(?i)[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*[\"']\s*\+"
+      :regex #"(?i)(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*')\s*\+"
       :message "SQL query built with string concatenation - use parameterized queries"}
      ;; Java: string concat in executeQuery/executeUpdate
      {:langs #{"java"}
-      :regex #"(?i)(?:executeQuery|executeUpdate|execute)\s*\(\s*[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*[\"']\s*\+"
+      :regex #"(?i)(?:executeQuery|executeUpdate|execute)\s*\(\s*(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*')\s*\+"
       :message "SQL query with string concatenation - use PreparedStatement with parameters"}
      ;; Go: fmt.Sprintf in Query/Exec
      {:langs #{"go"}
@@ -69,7 +83,7 @@
       :message "SQL query uses fmt.Sprintf - use parameterized queries"}
      ;; Go: string concat
      {:langs #{"go"}
-      :regex #"(?i)(?:Query|Exec|QueryRow)\s*\(\s*[\"'](?:SELECT|INSERT|UPDATE|DELETE)\b[^\"']*[\"']\s*\+"
+      :regex #"(?i)(?:Query|Exec|QueryRow)\s*\(\s*(?:\"(?:SELECT|INSERT|UPDATE|DELETE)\b[^\"]*\"|'(?:SELECT|INSERT|UPDATE|DELETE)\b[^']*')\s*\+"
       :message "SQL query with string concatenation - use parameterized queries"}]}
 
    ;; A03:2021 — XSS (CWE-79)
@@ -257,12 +271,18 @@
 (defn find-source-files [dir]
   (let [exts ["py" "pyw" "js" "jsx" "ts" "tsx" "java" "go"]]
     (->> exts
-         (mapcat #(fs/glob dir (str "**/*." %)))
+         ;; "**.ext", not "**/*.ext": the latter needs a separator, so it
+         ;; never matches files directly inside dir
+         (mapcat #(fs/glob dir (str "**." %)))
          (map str)
          (remove #(str/includes? % "/node_modules/"))
          (remove #(str/includes? % "/.git/"))
          (distinct)
          sort)))
+
+(s/fdef find-source-files
+  :args (s/cat :dir ::specs/path-like)
+  :ret (s/coll-of string?))
 
 (defn scan-file [filepath]
   (let [lang (detect-language filepath)]
@@ -292,6 +312,10 @@
             (println (format "Warning: could not read %s: %s" filepath (.getMessage e))))
           [])))))
 
+(s/fdef scan-file
+  :args (s/cat :filepath ::specs/path-like)
+  :ret (s/nilable ::specs/findings))
+
 (defn scan-directory [dir min-severity]
   (let [files    (find-source-files dir)
         findings (->> files
@@ -308,6 +332,12 @@
      :findings-by-rule     (frequencies (map :rule-id findings))
      :findings            findings}))
 
+(s/fdef scan-directory
+  :args (s/cat :dir ::specs/path-like :min-severity ::specs/severity-name)
+  :ret ::specs/scan-results
+  :fn (fn [{{:keys [min-severity]} :args ret :ret}]
+        (every? #(severity>= (:severity %) min-severity) (:findings ret))))
+
 ;;; ---- Output formatting ----
 
 (defn format-text [{:keys [directory files-scanned total-findings
@@ -322,9 +352,9 @@
         (when (pos? total-findings)
           [(format "By severity: %s"
                    (str/join ", "
-                     (for [[sev cnt] (sort-by (fn [[s _]] (- (get severity-levels s 0)))
-                                              findings-by-severity)]
-                       (format "%s=%d" sev cnt))))
+                             (for [[sev cnt] (sort-by (fn [[s _]] (- (get severity-levels s 0)))
+                                                      findings-by-severity)]
+                               (format "%s=%d" sev cnt))))
            ""])
         finding-lines
         (for [{:keys [severity rule-id file line message code cwe]} findings]
@@ -339,17 +369,43 @@
                       ["No security issues found."])]
     (str/join "\n" (concat header severity-summary finding-lines no-findings [""]))))
 
+(s/fdef format-text
+  :args (s/cat :results ::specs/scan-results)
+  :ret string?
+  :fn (fn [{{:keys [results]} :args ret :ret}]
+        (and (str/includes? ret (format "Total findings: %d" (:total-findings results)))
+             (= (zero? (:total-findings results))
+                (str/includes? ret "No security issues found.")))))
+
 (defn format-json [results]
   (json/generate-string results {:pretty true}))
 
+(s/fdef format-json
+  :args (s/cat :results ::specs/scan-results)
+  :ret string?
+  :fn (fn [{{:keys [results]} :args ret :ret}]
+        (specs/output-reads-back? "json" results ret)))
+
 (defn format-edn [results]
-  (with-out-str (clojure.pprint/pprint results)))
+  (with-out-str (pprint/pprint results)))
+
+(s/fdef format-edn
+  :args (s/cat :results ::specs/scan-results)
+  :ret string?
+  :fn (fn [{{:keys [results]} :args ret :ret}]
+        (specs/output-reads-back? "edn" results ret)))
 
 (defn format-output [results fmt]
   (case fmt
     "json" (format-json results)
     "edn"  (format-edn results)
     (format-text results)))
+
+(s/fdef format-output
+  :args (s/cat :results ::specs/scan-results :fmt ::specs/format)
+  :ret string?
+  :fn (fn [{{:keys [results fmt]} :args ret :ret}]
+        (specs/output-reads-back? fmt results ret)))
 
 ;;; ---- CLI ----
 
@@ -385,6 +441,9 @@
         (if (pos? (:total-findings results))
           (System/exit 1)
           (System/exit 0))))))
+
+(s/fdef -main
+  :args (s/* string?))
 
 (when (= *file* (System/getProperty "babashka.file"))
   (apply -main *command-line-args*))

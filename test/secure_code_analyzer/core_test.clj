@@ -1,8 +1,14 @@
 (ns secure_code_analyzer.core_test
-  (:require [clojure.test :refer [deftest testing is run-tests]]
+  (:require [babashka.fs :as fs]
+            [clojure.spec.test.alpha :as stest]
+            [clojure.test :refer [deftest testing is run-tests use-fixtures]]
             [clojure.string :as str]
             [secure_code_analyzer.core :as sca]
             [cheshire.core :as json]))
+
+;; Exercise every s/fdef :args spec while the unit tests run.
+(use-fixtures :once
+  (fn [f] (stest/instrument) (try (f) (finally (stest/unstrument)))))
 
 ;; ---- Unit tests ----
 
@@ -102,6 +108,31 @@
   (testing "Clean file produces no findings"
     (let [findings (sca/scan-file "test/fixtures/clean.py")]
       (is (empty? findings) "clean.py should have zero findings"))))
+
+;; ---- SQL literals containing the other quote character ----
+
+(deftest test-sql-concat-with-embedded-quotes
+  (testing "SQL built by concatenation/%-formatting is detected when the literal quotes a value"
+    (doseq [[ext line] [["js"   "db.query(\"SELECT * FROM users WHERE name='\" + name + \"'\");"]
+                        ["java" "stmt.executeQuery(\"SELECT * FROM users WHERE name='\" + name + \"'\");"]
+                        ["go"   "db.Query(\"SELECT * FROM users WHERE name='\" + name + \"'\")"]
+                        ["py"   "query = \"SELECT * FROM users WHERE name='\" + username + \"'\""]
+                        ["py"   "cursor.execute(\"SELECT * FROM users WHERE name='%s'\" % name)"]
+                        ["js"   "db.query('SELECT * FROM users WHERE name=\"' + name + '\"');"]]]
+      (let [f (fs/create-temp-file {:prefix "sca-sql-" :suffix (str "." ext)})]
+        (try
+          (spit (str f) line)
+          (is (some #(= "sql-injection" (:rule-id %)) (sca/scan-file (str f)))
+              (str ext ": " line))
+          (finally (fs/delete f)))))))
+
+;; ---- Directory walk ----
+
+(deftest test-top-level-files-are-scanned
+  (testing "Files directly inside the scanned directory are scanned, not only subdirectories"
+    (let [results (sca/scan-directory "test/fixtures" "info")]
+      (is (= 5 (:files-scanned results)))
+      (is (some #(= "test/fixtures/vulnerable.py" (:file %)) (:findings results))))))
 
 ;; ---- Severity filter ----
 
